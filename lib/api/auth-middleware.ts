@@ -15,6 +15,12 @@ export async function getCurrentUser(req: NextRequest): Promise<{ userId: string
     // Get Better Auth instance
     const auth = getAuthInstance();
     
+    // Check if auth instance is available
+    if (!auth || !auth.api) {
+      console.log('[Auth Middleware] Auth instance not available');
+      return null;
+    }
+    
     // Convert NextRequest to standard Request for Better Auth
     const url = req.url;
     const headers = new Headers();

@@ -5,9 +5,9 @@ import { motion } from 'framer-motion';
 import { apiGet } from '@/lib/api-client';
 import { useAuth } from '@/lib/hooks/use-auth';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 
-export default function OnboardingResultsPage() {
+function OnboardingResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -529,5 +529,22 @@ export default function OnboardingResultsPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function OnboardingResultsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600"></div>
+            <p className="text-gray-600 mt-4">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <OnboardingResultsContent />
+    </Suspense>
   );
 }
