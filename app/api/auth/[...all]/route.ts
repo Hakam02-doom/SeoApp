@@ -240,13 +240,30 @@ async function handleRequest(
         });
       }
       
-      // Return a proper error response
+      // Return a proper error response with more details
+      const errorResponse: any = {
+        error: 'Internal server error',
+        message: handlerError?.message || 'An unexpected error occurred',
+        code: 'INTERNAL_ERROR',
+      };
+
+      // Add more context for common errors
+      if (handlerError?.message?.includes('DATABASE_URL')) {
+        errorResponse.code = 'MISSING_DATABASE_URL';
+        errorResponse.message = 'Database connection is not configured. Please set DATABASE_URL environment variable.';
+      } else if (handlerError?.message?.includes('BETTER_AUTH_SECRET')) {
+        errorResponse.code = 'MISSING_AUTH_SECRET';
+        errorResponse.message = 'Authentication secret is not configured. Please set BETTER_AUTH_SECRET environment variable.';
+      } else if (handlerError?.message?.includes('Prisma')) {
+        errorResponse.code = 'DATABASE_ERROR';
+        errorResponse.message = 'Database operation failed. Check your database connection and schema.';
+      } else if (handlerError?.message?.includes('Invalid origin')) {
+        errorResponse.code = 'INVALID_ORIGIN';
+        errorResponse.message = 'Request origin is not allowed. Check NEXT_PUBLIC_APP_URL configuration.';
+      }
+
       return new Response(
-        JSON.stringify({
-          error: 'Internal server error',
-          message: handlerError?.message || 'An unexpected error occurred',
-          code: 'INTERNAL_ERROR',
-        }),
+        JSON.stringify(errorResponse),
         {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
