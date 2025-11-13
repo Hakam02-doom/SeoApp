@@ -1,4 +1,4 @@
-import { articleGenerationQueue, publishingQueue, analyticsSyncQueue } from './queue';
+import { articleGenerationQueue, publishingQueue, analyticsSyncQueue, isQueueAvailable } from './queue';
 import { db } from '@/lib/db';
 
 /**
@@ -24,6 +24,11 @@ export async function scheduleDailyArticleGeneration() {
     },
   });
 
+  if (!isQueueAvailable()) {
+    console.warn('[Scheduler] Queues not available - skipping article generation scheduling');
+    return;
+  }
+
   for (const project of projects) {
     if (project.keywords.length > 0) {
       await articleGenerationQueue.add(
@@ -48,6 +53,11 @@ export async function scheduleDailyArticleGeneration() {
  */
 export async function schedulePublishing() {
   console.log('[Scheduler] Checking for scheduled articles...');
+
+  if (!isQueueAvailable()) {
+    console.warn('[Scheduler] Queues not available - skipping publishing scheduling');
+    return;
+  }
 
   const scheduledArticles = await db.article.findMany({
     where: {
@@ -76,6 +86,11 @@ export async function schedulePublishing() {
  */
 export async function scheduleAnalyticsSync() {
   console.log('[Scheduler] Scheduling analytics sync...');
+
+  if (!isQueueAvailable()) {
+    console.warn('[Scheduler] Queues not available - skipping analytics sync scheduling');
+    return;
+  }
 
   const projects = await db.project.findMany({
     where: {

@@ -97,7 +97,13 @@ export async function processPublishing(job: Job<PublishingJobData>) {
  * Create worker for publishing
  */
 export function createPublishingWorker() {
-  const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+  // Only create worker if Redis is available
+  if (!process.env.REDIS_URL) {
+    console.warn('[Publishing Worker] REDIS_URL not set - worker will not start');
+    return null as any;
+  }
+
+  const REDIS_URL = process.env.REDIS_URL;
   return new Worker(QUEUE_NAMES.PUBLISHING, processPublishing, {
     connection: new Redis(REDIS_URL, {
       maxRetriesPerRequest: null,
