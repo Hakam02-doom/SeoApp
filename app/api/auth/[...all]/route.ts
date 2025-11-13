@@ -10,25 +10,27 @@ let authInstance: ReturnType<typeof betterAuth> | null = null;
 function getAuthInstance() {
   if (!authInstance) {
     try {
+      // Check required environment variables
       if (!process.env.DATABASE_URL) {
-        console.warn('[Better Auth] DATABASE_URL not configured, using minimal config');
-        // Return a minimal auth instance that won't crash
-        authInstance = betterAuth({
-          database: prismaAdapter(db, {
-            provider: 'postgresql',
-            usePlural: false,
-          }),
-          emailAndPassword: {
-            enabled: true,
-            requireEmailVerification: false,
-          },
-          baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4000',
-          secret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || 'fallback-secret-for-development-only-change-in-production',
-        });
-        return authInstance;
+        console.error('[Better Auth] DATABASE_URL is required but not set');
+        throw new Error('DATABASE_URL environment variable is not configured');
       }
 
-      authInstance = betterAuth({
+      if (!process.env.BETTER_AUTH_SECRET && !process.env.AUTH_SECRET) {
+        console.error('[Better Auth] BETTER_AUTH_SECRET or AUTH_SECRET is required but not set');
+        throw new Error('BETTER_AUTH_SECRET or AUTH_SECRET environment variable is not configured');
+      }
+
+      // Get base URL - prefer BETTER_AUTH_URL, then NEXT_PUBLIC_APP_URL
+      const baseURL = process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
+      if (!baseURL) {
+        console.warn('[Better Auth] No baseURL configured, using fallback');
+      }
+
+      const secret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || 'fallback-secret-for-development-only-change-in-production';
+
+      // Build Better Auth config
+      const authConfig: any = {
         database: prismaAdapter(db, {
           provider: 'postgresql',
           usePlural: false, // Use singular model names (User, not Users)
@@ -37,35 +39,16 @@ function getAuthInstance() {
           enabled: true,
           requireEmailVerification: false,
         },
-        socialProviders: {
-          google: {
-            clientId: process.env.GOOGLE_CLIENT_ID || '',
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-          },
-        },
-        account: {
-          accountLinking: {
-            enabled: true,
-            // Allow linking accounts even if emails don't match
-            allowDifferentEmails: true,
-            // Trust Google as a provider for account linking
-            trustedProviders: ['google'],
-            // Allow updating user info when linking
-            updateUserInfoOnLink: true,
-          },
-        },
-        baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4000',
-        secret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || 'fallback-secret-for-development-only-change-in-production',
+        baseURL: baseURL || 'http://localhost:4000',
+        secret: secret,
         session: {
           expiresIn: 60 * 60 * 24 * 7, // 7 days
           updateAge: 60 * 60 * 24, // 1 day
         },
-        trustedOrigins: [
-          process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4000',
-        ],
+        trustedOrigins: baseURL ? [baseURL] : [],
         logger: {
-          level: 'debug',
-          log: (level, message, ...args) => {
+          level: process.env.NODE_ENV === 'production' ? 'error' : 'debug',
+          log: (level: string, message: string, ...args: any[]) => {
             if (level === 'error' || level === 'warn') {
               console.error(`[Better Auth ${level.toUpperCase()}]`, message, ...args);
               // Log full error details
@@ -73,7 +56,9 @@ function getAuthInstance() {
                 args.forEach((arg, index) => {
                   if (arg instanceof Error) {
                     console.error(`[Better Auth Error ${index}]`, arg.message);
-                    console.error(`[Better Auth Error Stack ${index}]`, arg.stack);
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.error(`[Better Auth Error Stack ${index}]`, arg.stack);
+                    }
                     // Log Prisma errors specifically
                     if (arg.message.includes('Prisma') || arg.message.includes('Unique constraint') || arg.message.includes('null value')) {
                       console.error(`[Better Auth Database Error]`, JSON.stringify(arg, null, 2));
@@ -85,16 +70,40 @@ function getAuthInstance() {
                   }
                 });
               }
-            } else {
+            } else if (process.env.NODE_ENV !== 'production') {
               console.log(`[Better Auth ${level}]`, message, ...args);
             }
           },
         },
-      });
+      };
+
+      // Add Google OAuth if credentials are provided
+      if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+        authConfig.socialProviders = {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          },
+        };
+        authConfig.account = {
+          accountLinking: {
+            enabled: true,
+            allowDifferentEmails: true,
+            trustedProviders: ['google'],
+            updateUserInfoOnLink: true,
+          },
+        };
+      }
+
+      authInstance = betterAuth(authConfig);
       console.log('[Auth Route] Better Auth initialized successfully');
     } catch (error: any) {
       console.error('[Auth Route] Failed to initialize Better Auth:', error);
-      throw error;
+      console.error('[Auth Route] Error message:', error?.message);
+      console.error('[Auth Route] Error stack:', error?.stack);
+      
+      // Don't throw - return null and let getHandler handle it
+      return null as any;
     }
   }
   return authInstance;
@@ -107,13 +116,45 @@ function getHandler() {
   if (!handler) {
     try {
       const auth = getAuthInstance();
+      if (!auth) {
+        throw new Error('Failed to get auth instance');
+      }
       handler = toNextJsHandler(auth);
     } catch (error: any) {
       console.error('[Auth Route] Failed to create handler:', error);
-      // Return a handler that returns error responses
+      console.error('[Auth Route] Handler error message:', error?.message);
+      // Return a handler that returns error responses with more details
       handler = {
-        GET: async () => new Response(JSON.stringify({ error: 'Auth initialization failed' }), { status: 500 }),
-        POST: async () => new Response(JSON.stringify({ error: 'Auth initialization failed' }), { status: 500 }),
+        GET: async (req: Request) => {
+          const errorMsg = error?.message || 'Auth initialization failed';
+          console.error('[Auth Route] GET handler error:', errorMsg);
+          return new Response(
+            JSON.stringify({ 
+              error: 'Authentication service unavailable',
+              message: errorMsg,
+              code: 'AUTH_INIT_FAILED'
+            }), 
+            { 
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        },
+        POST: async (req: Request) => {
+          const errorMsg = error?.message || 'Auth initialization failed';
+          console.error('[Auth Route] POST handler error:', errorMsg);
+          return new Response(
+            JSON.stringify({ 
+              error: 'Authentication service unavailable',
+              message: errorMsg,
+              code: 'AUTH_INIT_FAILED'
+            }), 
+            { 
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        },
       } as any;
     }
   }
