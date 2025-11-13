@@ -1,0 +1,45 @@
+.rankyak-settings {
+    max-width: 800px;
+    margin-top: 20px;
+}
+
+.rankyak-status {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.rankyak-status.connected {
+    border-left: 4px solid #46b450;
+}
+
+.rankyak-status.disconnected {
+    border-left: 4px solid #dc3232;
+}
+
+.rankyak-status h2 {
+    margin-top: 0;
+}
+
+.rankyak-settings-form {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.rankyak-info {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.rankyak-info ul {
+    list-style: disc;
+    margin-left: 20px;
+}
+

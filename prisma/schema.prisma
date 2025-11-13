@@ -1,0 +1,256 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified Boolean? @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  projects      Project[]
+  subscriptions Subscription[]
+  sessions      Session[]
+  accounts      Account[]
+  credential    Credential?
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  accountId         String?  // Better Auth uses this for account linking
+  type              String?  // Made optional - Better Auth sets this (oauth for social, credential for email/password)
+  provider          String   @default("") // Keep for Better Auth compatibility - will be synced with providerId
+  providerId        String   // Required - Better Auth uses this field name (google, credential, etc.)
+  providerAccountId String?  // Made optional - Better Auth provides this for OAuth but may be null for credential accounts
+  password          String?  // Better Auth stores password here for email/password auth
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?    // Unix timestamp for token expiration
+  accessTokenExpiresAt DateTime? // Better Auth DateTime field - will be converted to expires_at
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())  // Better Auth requires this
+  updatedAt         DateTime @updatedAt  // Better Auth requires this
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@unique([providerId, providerAccountId])  // Unique constraint - PostgreSQL allows multiple nulls
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @default(cuid())  // Better Auth may not provide this, use default
+  token        String?   @unique // Better Auth uses this field name
+  userId       String
+  expires      DateTime?
+  expiresAt    DateTime? // Better Auth may use this field name
+  ipAddress    String?   // Better Auth may use this field name
+  userAgent    String?   // Better Auth may use this field name
+  createdAt    DateTime  @default(now())  // Better Auth requires this
+  updatedAt    DateTime  @updatedAt  // Better Auth requires this
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Verification {
+  id        String   @id @default(cuid())
+  identifier String
+  token     String?  // Made optional - Better Auth may use 'value' instead
+  value     String?  @db.Text // Better Auth uses this field for OAuth state
+  expires   DateTime? // Made optional - Better Auth uses expiresAt instead
+  expiresAt DateTime // Better Auth uses this field name for OAuth
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([identifier])
+  @@index([identifier])
+}
+
+model Credential {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  password   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String
+  websiteUrl      String
+  language        String    @default("en")
+  brandVoice      Json?
+  brandAnalysis   Json?     // Stores brand colors, fonts, logo
+  seoAnalysis     Json?     // Stores initial SEO analysis
+  competitorData  Json?     // Stores competitor analysis
+  onboardingComplete Boolean @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keywords        Keyword[]
+  articles        Article[]
+  backlinks       Backlink[]
+  integrations    Integration[]
+  settings        ProjectSettings?
+
+  @@index([userId])
+  @@index([websiteUrl])
+  @@index([createdAt])
+  @@index([onboardingComplete])
+}
+
+model ProjectSettings {
+  id                String   @id @default(cuid())
+  projectId         String   @unique
+  autoPublish       Boolean  @default(false)
+  requireReview     Boolean  @default(true)
+  defaultCategory   String?
+  contentGuidelines Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Keyword {
+  id              String    @id @default(cuid())
+  projectId       String
+  keyword         String
+  searchVolume    Int?
+  difficulty      Int?
+  plannedDate     DateTime?
+  status          String    @default("unplanned") // unplanned, planned, used
+  starred         Boolean   @default(false)
+  clusterId       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  articles        Article[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([plannedDate])
+  @@index([starred])
+  @@index([projectId, status])
+  @@index([projectId, starred])
+}
+
+model Article {
+  id              String    @id @default(cuid())
+  projectId       String
+  keywordId       String?
+  title           String
+  content         String    @db.Text
+  metaTitle       String?
+  metaDescription String?  @db.Text
+  featuredImage   String?
+  status          String    @default("draft") // draft, scheduled, published
+  publishedAt     DateTime?
+  seoScore        Int?
+  wordCount       Int?
+  headingCount    Int?
+  paragraphCount  Int?
+  internalLinks   Int       @default(0)
+  externalLinks   Int       @default(0)
+  keywordDensity  Float?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword         Keyword?  @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([projectId, status])
+  @@index([projectId, publishedAt])
+  @@index([createdAt])
+  @@index([keywordId])
+}
+
+model Backlink {
+  id              String    @id @default(cuid())
+  projectId       String
+  fromUrl         String
+  toUrl           String
+  anchorText      String?
+  status          String    @default("pending") // pending, published, rejected
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([projectId, status])
+  @@index([createdAt])
+}
+
+model Integration {
+  id              String    @id @default(cuid())
+  projectId       String
+  platform        String    // wordpress, shopify, webflow, wix, zapier, make
+  credentials     Json      // encrypted credentials
+  integrationKey  String?   @unique // Unique integration key for API access
+  isActive        Boolean   @default(false)
+  lastSyncAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, platform])
+  @@index([projectId])
+  @@index([integrationKey])
+  @@index([platform])
+  @@index([isActive])
+  @@index([projectId, isActive])
+}
+
+model Subscription {
+  id                String    @id @default(cuid())
+  userId            String
+  polarCustomerId  String?   @unique
+  polarSubscriptionId String? @unique
+  plan              String    // pro, agency
+  status            String    // active, cancelled, expired, trialing
+  currentPeriodEnd DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
