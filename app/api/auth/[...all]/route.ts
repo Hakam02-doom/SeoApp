@@ -209,9 +209,11 @@ async function handleRequest(
 ): Promise<Response> {
   try {
     const url = new URL(req.url);
+    const origin = req.headers.get('origin') || req.headers.get('referer') || 'unknown';
     console.log('========================================');
     console.log('[Auth Route Handler] Handling request:', url.pathname);
     console.log('[Auth Route Handler] Method:', req.method);
+    console.log('[Auth Route Handler] Origin:', origin);
     console.log('[Auth Route Handler] Full URL:', url.toString());
     console.log('[Auth Route Handler] Search params:', url.search);
     
