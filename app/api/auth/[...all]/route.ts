@@ -22,12 +22,51 @@ function getAuthInstance() {
       }
 
       // Get base URL - prefer BETTER_AUTH_URL, then NEXT_PUBLIC_APP_URL
-      const baseURL = process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
+      // Also check Vercel's automatically provided URL
+      let baseURL = process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
+      
+      // If no baseURL set, try to construct from Vercel URL
+      if (!baseURL && process.env.VERCEL_URL) {
+        baseURL = `https://${process.env.VERCEL_URL}`;
+      }
+      
+      // Fallback for development
       if (!baseURL) {
-        console.warn('[Better Auth] No baseURL configured, using fallback');
+        baseURL = 'http://localhost:4000';
+        console.warn('[Better Auth] No baseURL configured, using fallback:', baseURL);
       }
 
       const secret = process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || 'fallback-secret-for-development-only-change-in-production';
+
+      // Build trusted origins array
+      // Include baseURL and also allow Vercel preview deployments
+      const trustedOrigins: string[] = [];
+      
+      // Always add the baseURL
+      if (baseURL) {
+        trustedOrigins.push(baseURL);
+      }
+      
+      // Add Vercel URL if it's different from baseURL (for preview deployments)
+      if (process.env.VERCEL_URL) {
+        const vercelUrl = `https://${process.env.VERCEL_URL}`;
+        if (!trustedOrigins.includes(vercelUrl)) {
+          trustedOrigins.push(vercelUrl);
+        }
+      }
+      
+      // In development, allow localhost variants
+      if (process.env.NODE_ENV === 'development') {
+        ['http://localhost:4000', 'http://localhost:3000', 'http://127.0.0.1:4000', 'http://127.0.0.1:3000'].forEach(origin => {
+          if (!trustedOrigins.includes(origin)) {
+            trustedOrigins.push(origin);
+          }
+        });
+      }
+      
+      // Log for debugging
+      console.log('[Better Auth Config] Base URL:', baseURL);
+      console.log('[Better Auth Config] Trusted Origins:', trustedOrigins);
 
       // Build Better Auth config
       const authConfig: any = {
@@ -45,7 +84,7 @@ function getAuthInstance() {
           expiresIn: 60 * 60 * 24 * 7, // 7 days
           updateAge: 60 * 60 * 24, // 1 day
         },
-        trustedOrigins: baseURL ? [baseURL] : [],
+        trustedOrigins: trustedOrigins.length > 0 ? trustedOrigins : (baseURL ? [baseURL] : ['http://localhost:4000']),
         logger: {
           level: process.env.NODE_ENV === 'production' ? 'error' : 'debug',
           log: (level: string, message: string, ...args: any[]) => {
@@ -97,6 +136,8 @@ function getAuthInstance() {
 
       authInstance = betterAuth(authConfig);
       console.log('[Auth Route] Better Auth initialized successfully');
+      console.log('[Auth Route] Base URL:', baseURL || 'http://localhost:4000');
+      console.log('[Auth Route] Trusted Origins:', trustedOrigins.length > 0 ? trustedOrigins : (baseURL ? [baseURL] : ['http://localhost:4000']));
     } catch (error: any) {
       console.error('[Auth Route] Failed to initialize Better Auth:', error);
       console.error('[Auth Route] Error message:', error?.message);
